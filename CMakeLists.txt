@@ -13,7 +13,6 @@ if(CONFIG_VFX_RETRO)
       -Wlogical-op
       -Wduplicated-cond
       -Wduplicated-branches
-      -Wmissing-prototypes
       -Wjump-misses-init
       -Wwrite-strings
       -Winit-self
