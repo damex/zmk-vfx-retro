@@ -46,6 +46,12 @@ config VFX_RETRO_REFRESH_MS
     int "Refresh interval (ms)"
     default 1000
     help
-      Status screen redraw period.
+      Redraw period while static.
+
+config VFX_RETRO_ANIMATION_MS
+    int "Animation interval (ms)"
+    default 250
+    help
+      Redraw period while animating.
 
 endif # VFX_RETRO

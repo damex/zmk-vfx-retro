@@ -11,8 +11,10 @@
 #include <dt-bindings/zmk/modifiers.h>
 #include <lvgl.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/toolchain.h>
+#include <zmk/activity.h>
 #include <zmk/display/status_screen.h>
+#include <zmk/event_manager.h>
+#include <zmk/events/activity_state_changed.h>
 
 #include "battery.h"
 #include "glyphs.h"
@@ -35,15 +37,18 @@
 #define ICON_SCALE 2
 #define EDGE_MARGIN 4
 #define TOP_Y 10
+#define STATE_Y 132
 #define ELEMENT_GAP 2
 #define READ_WIDTH CONFIG_VFX_RETRO_PANEL_HEIGHT
 #define READ_HEIGHT CONFIG_VFX_RETRO_PANEL_WIDTH
 #define MODIFIER_COLUMNS 2
 
 #define BATTERY_X EDGE_MARGIN
-#define SIGNAL_X (READ_WIDTH - VFX_RETRO_SIGNAL_WIDTH * ICON_SCALE - EDGE_MARGIN)
+#define SIGNAL_X                                                           \
+    (READ_WIDTH - VFX_RETRO_SIGNAL_WIDTH * ICON_SCALE - EDGE_MARGIN)
 #define CHANNEL_RIGHT_X (READ_WIDTH - EDGE_MARGIN)
-#define CHANNEL_Y (TOP_Y + VFX_RETRO_SIGNAL_HEIGHT * ICON_SCALE + ELEMENT_GAP)
+#define CHANNEL_Y                                                          \
+    (TOP_Y + VFX_RETRO_SIGNAL_HEIGHT * ICON_SCALE + ELEMENT_GAP)
 
 #define MODIFIER_CELL_WIDTH                                                \
     ((VFX_RETRO_MODIFIER_WIDTH + 2 * VFX_RETRO_CELL_BORDER) * ICON_SCALE)
@@ -69,11 +74,27 @@
     (CHANNEL_Y + VFX_RETRO_DIGIT_HEIGHT * ICON_SCALE + ELEMENT_GAP +      \
      VFX_RETRO_CELL_BORDER * ICON_SCALE)
 
+typedef struct {
+    int state_of_charge;
+    bool searching;
+    uint8_t signal;
+    uint8_t channel;
+    bool charging;
+    bool idle;
+    uint8_t modifiers;
+    uint8_t indicators;
+} display_state_t;
+
 static uint8_t read_buf[READ_BUF_SIZE];
 static uint8_t panel_buf[PANEL_BUF_SIZE];
 static lv_obj_t *read_canvas;
 static lv_obj_t *panel_canvas;
+static display_state_t last;
+static bool drawn;
+static volatile bool wake_redraw;
 static uint32_t frame;
+static uint8_t charge_step;
+static uint8_t charge_level;
 
 static void blit_read_to_panel(void) {
     lv_draw_buf_t *read_drawbuf = lv_canvas_get_draw_buf(read_canvas);
@@ -89,16 +110,53 @@ static void blit_read_to_panel(void) {
     lv_obj_invalidate(panel_canvas);
 }
 
-static void draw_battery(int state_of_charge) {
+/* Charger voltage jitters SoC, ratchet up only. */
+static void track_charge(bool charging, uint8_t level) {
+    if (!charging) {
+        return;
+    }
+    if (!last.charging || level > charge_level) {
+        charge_level = level;
+    }
+}
+
+static bool state_differs(const display_state_t *a,
+                          const display_state_t *b) {
+    return a->state_of_charge != b->state_of_charge ||
+           a->searching != b->searching ||
+           a->signal != b->signal ||
+           a->channel != b->channel ||
+           a->charging != b->charging ||
+           a->idle != b->idle ||
+           a->modifiers != b->modifiers ||
+           a->indicators != b->indicators;
+}
+
+static void draw_battery(int state_of_charge,
+                         uint8_t level,
+                         bool charging,
+                         bool charge_animating) {
     if (state_of_charge < 0) {
         return;
     }
-    uint8_t level = vfx_retro_battery_level((uint8_t)state_of_charge);
+    uint8_t draw_level = level;
+    if (charge_animating) {
+        uint8_t span =
+            (uint8_t)(VFX_RETRO_BATTERY_LEVEL_MAX - charge_level + 1);
+        draw_level = (uint8_t)(charge_level + charge_step % span);
+    } else if (charging) {
+        draw_level = charge_level;
+    }
     vfx_retro_draw_battery(read_canvas,
                            BATTERY_X,
                            TOP_Y,
                            ICON_SCALE,
-                           level);
+                           draw_level);
+}
+
+static void draw_idle(void) {
+    vfx_retro_style_draw_sleep(read_canvas, READ_WIDTH);
+    vfx_retro_draw_text(read_canvas, STATE_Y, "Zzz");
 }
 
 static void draw_link(struct vfx_retro_link link) {
@@ -170,22 +228,89 @@ static void draw_indicators(uint8_t indicators) {
     }
 }
 
-static void refresh(lv_timer_t *timer) {
-    ARG_UNUSED(timer);
-    struct vfx_retro_link link = vfx_retro_link_get();
-
+static void render(const display_state_t *current,
+                   struct vfx_retro_link link,
+                   uint8_t level,
+                   bool charge_animating) {
     lv_canvas_fill_bg(read_canvas, lv_color_black(), LV_OPA_COVER);
-    draw_battery(vfx_retro_battery_state_of_charge());
+    draw_battery(current->state_of_charge,
+                 level,
+                 current->charging,
+                 charge_animating);
+    if (current->idle) {
+        draw_idle();
+        return;
+    }
     draw_link(link);
     draw_sprite(link);
-    draw_modifiers(vfx_retro_hid_modifiers_get());
-    draw_indicators(vfx_retro_hid_indicators_get());
-    blit_read_to_panel();
+    draw_modifiers(current->modifiers);
+    draw_indicators(current->indicators);
+}
 
-    if (link.searching) {
+static void commit(const display_state_t *current,
+                   bool searching,
+                   bool charge_animating) {
+    last = *current;
+    drawn = true;
+    if (searching) {
         frame++;
     }
+    if (charge_animating) {
+        charge_step++;
+    }
 }
+
+static void refresh(lv_timer_t *timer) {
+    struct vfx_retro_link link = vfx_retro_link_get();
+    int state_of_charge = vfx_retro_battery_state_of_charge();
+    uint8_t level = (state_of_charge >= 0)
+        ? vfx_retro_battery_level((uint8_t)state_of_charge)
+        : 0;
+    bool charging = vfx_retro_battery_is_charging();
+    track_charge(charging, level);
+
+    display_state_t current = {
+        .state_of_charge = state_of_charge,
+        .searching = link.searching,
+        .signal = link.searching ? 0 : vfx_retro_signal_level(link.rssi_dbm),
+        .channel = link.channel,
+        .charging = charging,
+        .idle = zmk_activity_get_state() != ZMK_ACTIVITY_ACTIVE,
+        .modifiers = vfx_retro_hid_modifiers_get(),
+        .indicators = vfx_retro_hid_indicators_get(),
+    };
+
+    bool forced = wake_redraw;
+    wake_redraw = false;
+    bool searching = !current.idle && current.searching;
+    bool charge_animating =
+        charging && charge_level < VFX_RETRO_BATTERY_LEVEL_MAX;
+    bool animating = searching || charge_animating;
+    /* Memory LCD holds pixels between redraws, slow poll when static. */
+    lv_timer_set_period(timer, animating
+        ? CONFIG_VFX_RETRO_ANIMATION_MS
+        : CONFIG_VFX_RETRO_REFRESH_MS);
+    if (!animating && !forced && drawn && !state_differs(&current, &last)) {
+        return;
+    }
+
+    render(&current, link, level, charge_animating);
+    commit(&current, searching, charge_animating);
+    blit_read_to_panel();
+}
+
+/* Deep sleep blanks panel, force repaint on wake. */
+static int activity_listener(const zmk_event_t *eh) {
+    const struct zmk_activity_state_changed *ev =
+        as_zmk_activity_state_changed(eh);
+    if (ev != NULL && ev->state == ZMK_ACTIVITY_ACTIVE) {
+        wake_redraw = true;
+    }
+    return 0;
+}
+
+ZMK_LISTENER(vfx_retro_activity, activity_listener);
+ZMK_SUBSCRIPTION(vfx_retro_activity, zmk_activity_state_changed);
 
 lv_obj_t *zmk_display_status_screen(void) {
     lv_obj_t *screen = lv_obj_create(NULL);
