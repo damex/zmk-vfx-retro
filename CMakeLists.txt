@@ -19,6 +19,10 @@ if(CONFIG_VFX_RETRO)
       -Wold-style-definition
       -fanalyzer
   )
+  zephyr_library_sources(src/battery.c)
+  zephyr_library_sources(src/indicators.c)
+  zephyr_library_sources(src/link.c)
+  zephyr_library_sources(src/modifiers.c)
   zephyr_library_sources(src/render.c)
   zephyr_library_sources(src/vfx_retro.c)
 endif()
