@@ -39,9 +39,29 @@ static void blit_read_to_panel(void) {
     lv_obj_invalidate(panel_canvas);
 }
 
+static void draw_battery(void) {
+}
+
+static void draw_link(void) {
+}
+
+static void draw_sprite(void) {
+}
+
+static void draw_modifiers(void) {
+}
+
+static void draw_indicators(void) {
+}
+
 static void refresh(lv_timer_t *timer) {
     ARG_UNUSED(timer);
     lv_canvas_fill_bg(read_canvas, lv_color_black(), LV_OPA_COVER);
+    draw_battery();
+    draw_link();
+    draw_sprite();
+    draw_modifiers();
+    draw_indicators();
     blit_read_to_panel();
 }
 
