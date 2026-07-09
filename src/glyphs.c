@@ -28,6 +28,13 @@
 #include "bitmaps/digit_7.xbm"
 #include "bitmaps/digit_8.xbm"
 #include "bitmaps/digit_9.xbm"
+#include "bitmaps/indicator_caps.xbm"
+#include "bitmaps/indicator_num.xbm"
+#include "bitmaps/indicator_scroll.xbm"
+#include "bitmaps/modifier_alt.xbm"
+#include "bitmaps/modifier_ctrl.xbm"
+#include "bitmaps/modifier_gui.xbm"
+#include "bitmaps/modifier_shift.xbm"
 #include "bitmaps/signal_0.xbm"
 #include "bitmaps/signal_1.xbm"
 #include "bitmaps/signal_2.xbm"
@@ -44,6 +51,12 @@ BUILD_ASSERT(signal_0_width == VFX_RETRO_SIGNAL_WIDTH &&
 BUILD_ASSERT(digit_0_width == VFX_RETRO_DIGIT_WIDTH &&
              digit_0_height == VFX_RETRO_DIGIT_HEIGHT,
              "digit bitmap dims drifted");
+BUILD_ASSERT(modifier_ctrl_width == VFX_RETRO_MODIFIER_WIDTH &&
+             modifier_ctrl_height == VFX_RETRO_MODIFIER_HEIGHT,
+             "modifier bitmap dims drifted");
+BUILD_ASSERT(indicator_caps_width == VFX_RETRO_INDICATOR_WIDTH &&
+             indicator_caps_height == VFX_RETRO_INDICATOR_HEIGHT,
+             "indicator bitmap dims drifted");
 
 #define BATTERY_LEVEL_STEP (100 / VFX_RETRO_BATTERY_LEVEL_MAX)
 #define BATTERY_LEVEL_ROUND (BATTERY_LEVEL_STEP / 2)
@@ -151,4 +164,74 @@ void vfx_retro_draw_number(lv_obj_t *canvas,
         value /= 10;
         x -= scale;
     } while (value > 0);
+}
+
+static void draw_inverted_cell(lv_obj_t *canvas,
+                               lv_coord_t x,
+                               lv_coord_t y,
+                               uint8_t scale,
+                               uint8_t width,
+                               uint8_t height) {
+    vfx_retro_fill_rect(canvas,
+                        x - VFX_RETRO_CELL_BORDER * scale,
+                        y - VFX_RETRO_CELL_BORDER * scale,
+                        (width + 2 * VFX_RETRO_CELL_BORDER) * scale,
+                        (height + 2 * VFX_RETRO_CELL_BORDER) * scale,
+                        lv_color_white());
+}
+
+void vfx_retro_draw_modifier(lv_obj_t *canvas,
+                             lv_coord_t x,
+                             lv_coord_t y,
+                             uint8_t scale,
+                             enum vfx_retro_modifier modifier,
+                             bool active) {
+    static const uint8_t *const glyph_bits[] = {
+        [VFX_RETRO_MODIFIER_CTRL] = modifier_ctrl_bits,
+        [VFX_RETRO_MODIFIER_SHIFT] = modifier_shift_bits,
+        [VFX_RETRO_MODIFIER_ALT] = modifier_alt_bits,
+        [VFX_RETRO_MODIFIER_GUI] = modifier_gui_bits,
+    };
+    if (active) {
+        draw_inverted_cell(canvas,
+                           x,
+                           y,
+                           scale,
+                           VFX_RETRO_MODIFIER_WIDTH,
+                           VFX_RETRO_MODIFIER_HEIGHT);
+    }
+    vfx_retro_draw_xbm(canvas,
+                       x,
+                       y,
+                       scale,
+                       glyph_bits[modifier],
+                       VFX_RETRO_MODIFIER_WIDTH,
+                       VFX_RETRO_MODIFIER_HEIGHT,
+                       active ? lv_color_black() : lv_color_white());
+}
+
+void vfx_retro_draw_indicator(lv_obj_t *canvas,
+                              lv_coord_t x,
+                              lv_coord_t y,
+                              uint8_t scale,
+                              enum vfx_retro_indicator indicator) {
+    static const uint8_t *const glyph_bits[] = {
+        [VFX_RETRO_INDICATOR_CAPS] = indicator_caps_bits,
+        [VFX_RETRO_INDICATOR_NUM] = indicator_num_bits,
+        [VFX_RETRO_INDICATOR_SCROLL] = indicator_scroll_bits,
+    };
+    draw_inverted_cell(canvas,
+                       x,
+                       y,
+                       scale,
+                       VFX_RETRO_INDICATOR_WIDTH,
+                       VFX_RETRO_INDICATOR_HEIGHT);
+    vfx_retro_draw_xbm(canvas,
+                       x,
+                       y,
+                       scale,
+                       glyph_bits[indicator],
+                       VFX_RETRO_INDICATOR_WIDTH,
+                       VFX_RETRO_INDICATOR_HEIGHT,
+                       lv_color_black());
 }

@@ -3,15 +3,22 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
+#include <dt-bindings/zmk/hid_usage.h>
+#include <dt-bindings/zmk/modifiers.h>
 #include <lvgl.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/toolchain.h>
 #include <zmk/display/status_screen.h>
 
 #include "battery.h"
 #include "glyphs.h"
+#include "indicators.h"
 #include "link.h"
+#include "modifiers.h"
 
 #define READ_BUF_SIZE                                                      \
     LV_CANVAS_BUF_SIZE(CONFIG_VFX_RETRO_PANEL_HEIGHT,                      \
@@ -27,12 +34,39 @@
 #define ICON_SCALE 2
 #define EDGE_MARGIN 4
 #define TOP_Y 10
-#define CHANNEL_GAP 2
+#define ELEMENT_GAP 2
 #define READ_WIDTH CONFIG_VFX_RETRO_PANEL_HEIGHT
+#define READ_HEIGHT CONFIG_VFX_RETRO_PANEL_WIDTH
+#define MODIFIER_COLUMNS 2
+
 #define BATTERY_X EDGE_MARGIN
 #define SIGNAL_X (READ_WIDTH - VFX_RETRO_SIGNAL_WIDTH * ICON_SCALE - EDGE_MARGIN)
 #define CHANNEL_RIGHT_X (READ_WIDTH - EDGE_MARGIN)
-#define CHANNEL_Y (TOP_Y + VFX_RETRO_SIGNAL_HEIGHT * ICON_SCALE + CHANNEL_GAP)
+#define CHANNEL_Y (TOP_Y + VFX_RETRO_SIGNAL_HEIGHT * ICON_SCALE + ELEMENT_GAP)
+
+#define MODIFIER_CELL_WIDTH                                                \
+    ((VFX_RETRO_MODIFIER_WIDTH + 2 * VFX_RETRO_CELL_BORDER) * ICON_SCALE)
+#define MODIFIER_CELL_HEIGHT                                               \
+    ((VFX_RETRO_MODIFIER_HEIGHT + 2 * VFX_RETRO_CELL_BORDER) * ICON_SCALE)
+#define MODIFIER_COLUMN_SPAN (MODIFIER_CELL_WIDTH + ELEMENT_GAP)
+#define MODIFIER_ROW_SPAN (MODIFIER_CELL_HEIGHT + ELEMENT_GAP)
+#define MODIFIER_GRID_WIDTH                                                \
+    (MODIFIER_COLUMNS * MODIFIER_CELL_WIDTH + ELEMENT_GAP)
+#define MODIFIER_LEFT_X                                                    \
+    ((READ_WIDTH - MODIFIER_GRID_WIDTH) / 2 +                              \
+     VFX_RETRO_CELL_BORDER * ICON_SCALE)
+#define MODIFIER_RIGHT_X (MODIFIER_LEFT_X + MODIFIER_COLUMN_SPAN)
+#define MODIFIER_LOWER_Y                                                   \
+    (READ_HEIGHT - EDGE_MARGIN -                                          \
+     (VFX_RETRO_MODIFIER_HEIGHT + VFX_RETRO_CELL_BORDER) * ICON_SCALE)
+#define MODIFIER_UPPER_Y (MODIFIER_LOWER_Y - MODIFIER_ROW_SPAN)
+
+#define INDICATOR_SLOT_SPAN                                               \
+    ((VFX_RETRO_INDICATOR_WIDTH + 2 * VFX_RETRO_CELL_BORDER) * ICON_SCALE)
+#define INDICATOR_X (EDGE_MARGIN + VFX_RETRO_CELL_BORDER * ICON_SCALE)
+#define INDICATOR_Y                                                       \
+    (CHANNEL_Y + VFX_RETRO_DIGIT_HEIGHT * ICON_SCALE + ELEMENT_GAP +      \
+     VFX_RETRO_CELL_BORDER * ICON_SCALE)
 
 static uint8_t read_buf[READ_BUF_SIZE];
 static uint8_t panel_buf[PANEL_BUF_SIZE];
@@ -88,10 +122,49 @@ static void draw_link(struct vfx_retro_link link) {
 static void draw_sprite(void) {
 }
 
-static void draw_modifiers(void) {
+static void draw_modifiers(uint8_t modifiers) {
+    static const struct {
+        uint8_t mask;
+        enum vfx_retro_modifier glyph;
+    } cells[] = {
+        {MOD_LCTL | MOD_RCTL, VFX_RETRO_MODIFIER_CTRL},
+        {MOD_LSFT | MOD_RSFT, VFX_RETRO_MODIFIER_SHIFT},
+        {MOD_LALT | MOD_RALT, VFX_RETRO_MODIFIER_ALT},
+        {MOD_LGUI | MOD_RGUI, VFX_RETRO_MODIFIER_GUI},
+    };
+    for (size_t index = 0; index < ARRAY_SIZE(cells); index++) {
+        bool right_column = (index % MODIFIER_COLUMNS) != 0;
+        bool upper_row = (index / MODIFIER_COLUMNS) != 0;
+        lv_coord_t x = right_column ? MODIFIER_RIGHT_X : MODIFIER_LEFT_X;
+        lv_coord_t y = upper_row ? MODIFIER_UPPER_Y : MODIFIER_LOWER_Y;
+        vfx_retro_draw_modifier(read_canvas,
+                                x,
+                                y,
+                                ICON_SCALE,
+                                cells[index].glyph,
+                                (modifiers & cells[index].mask) != 0);
+    }
 }
 
-static void draw_indicators(void) {
+static void draw_indicators(uint8_t indicators) {
+    static const struct {
+        uint8_t mask;
+        enum vfx_retro_indicator glyph;
+    } cells[] = {
+        {BIT(HID_USAGE_LED_CAPS_LOCK - 1), VFX_RETRO_INDICATOR_CAPS},
+        {BIT(HID_USAGE_LED_NUM_LOCK - 1), VFX_RETRO_INDICATOR_NUM},
+        {BIT(HID_USAGE_LED_SCROLL_LOCK - 1), VFX_RETRO_INDICATOR_SCROLL},
+    };
+    for (size_t index = 0; index < ARRAY_SIZE(cells); index++) {
+        if ((indicators & cells[index].mask) == 0) {
+            continue;
+        }
+        vfx_retro_draw_indicator(read_canvas,
+                                 INDICATOR_X + index * INDICATOR_SLOT_SPAN,
+                                 INDICATOR_Y,
+                                 ICON_SCALE,
+                                 cells[index].glyph);
+    }
 }
 
 static void refresh(lv_timer_t *timer) {
@@ -100,8 +173,8 @@ static void refresh(lv_timer_t *timer) {
     draw_battery(vfx_retro_battery_state_of_charge());
     draw_link(vfx_retro_link_get());
     draw_sprite();
-    draw_modifiers();
-    draw_indicators();
+    draw_modifiers(vfx_retro_hid_modifiers_get());
+    draw_indicators(vfx_retro_hid_indicators_get());
     blit_read_to_panel();
 }
 
