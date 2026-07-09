@@ -19,6 +19,7 @@
 #include "indicators.h"
 #include "link.h"
 #include "modifiers.h"
+#include "style.h"
 
 #define READ_BUF_SIZE                                                      \
     LV_CANVAS_BUF_SIZE(CONFIG_VFX_RETRO_PANEL_HEIGHT,                      \
@@ -72,6 +73,7 @@ static uint8_t read_buf[READ_BUF_SIZE];
 static uint8_t panel_buf[PANEL_BUF_SIZE];
 static lv_obj_t *read_canvas;
 static lv_obj_t *panel_canvas;
+static uint32_t frame;
 
 static void blit_read_to_panel(void) {
     lv_draw_buf_t *read_drawbuf = lv_canvas_get_draw_buf(read_canvas);
@@ -119,7 +121,8 @@ static void draw_link(struct vfx_retro_link link) {
                           link.channel);
 }
 
-static void draw_sprite(void) {
+static void draw_sprite(struct vfx_retro_link link) {
+    vfx_retro_style_draw(read_canvas, READ_WIDTH, link, frame);
 }
 
 static void draw_modifiers(uint8_t modifiers) {
@@ -169,13 +172,19 @@ static void draw_indicators(uint8_t indicators) {
 
 static void refresh(lv_timer_t *timer) {
     ARG_UNUSED(timer);
+    struct vfx_retro_link link = vfx_retro_link_get();
+
     lv_canvas_fill_bg(read_canvas, lv_color_black(), LV_OPA_COVER);
     draw_battery(vfx_retro_battery_state_of_charge());
-    draw_link(vfx_retro_link_get());
-    draw_sprite();
+    draw_link(link);
+    draw_sprite(link);
     draw_modifiers(vfx_retro_hid_modifiers_get());
     draw_indicators(vfx_retro_hid_indicators_get());
     blit_read_to_panel();
+
+    if (link.searching) {
+        frame++;
+    }
 }
 
 lv_obj_t *zmk_display_status_screen(void) {

@@ -19,6 +19,15 @@ config VFX_RETRO_PANEL_HEIGHT
     int "Panel height (px)"
     default 68
 
+choice VFX_RETRO_STYLE
+    prompt "Sprite style"
+    default VFX_RETRO_STYLE_PACMAN
+
+config VFX_RETRO_STYLE_PACMAN
+    bool "Pac-Man"
+
+endchoice
+
 choice VFX_RETRO_FONT
     prompt "Text font"
     default VFX_RETRO_FONT_UNSCII_8

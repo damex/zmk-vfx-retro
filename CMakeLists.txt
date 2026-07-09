@@ -4,6 +4,7 @@
 if(CONFIG_VFX_RETRO)
   zephyr_library()
   zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include)
+  zephyr_library_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
   zephyr_library_compile_options(
       -Werror
       -Wextra
@@ -26,4 +27,5 @@ if(CONFIG_VFX_RETRO)
   zephyr_library_sources(src/modifiers.c)
   zephyr_library_sources(src/render.c)
   zephyr_library_sources(src/vfx_retro.c)
+  zephyr_library_sources_ifdef(CONFIG_VFX_RETRO_STYLE_PACMAN src/styles/pacman.c)
 endif()
