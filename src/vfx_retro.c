@@ -21,6 +21,7 @@
 #include "indicators.h"
 #include "link.h"
 #include "modifiers.h"
+#include "render.h"
 #include "style.h"
 
 #define READ_BUF_SIZE                                                      \
