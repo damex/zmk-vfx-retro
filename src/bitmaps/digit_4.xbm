@@ -1,0 +1,5 @@
+#define digit_4_width 5
+#define digit_4_height 7
+static const unsigned char digit_4_bits[] = {
+   0x08, 0x0C, 0x0A, 0x09, 0x1F, 0x08, 0x08
+};

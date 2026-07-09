@@ -1,0 +1,5 @@
+#define indicator_scroll_width 8
+#define indicator_scroll_height 8
+static const unsigned char indicator_scroll_bits[] = {
+   0x18, 0x3C, 0x7E, 0x00, 0x7E, 0x3C, 0x18, 0x00
+};

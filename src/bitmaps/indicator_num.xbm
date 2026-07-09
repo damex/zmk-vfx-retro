@@ -1,0 +1,5 @@
+#define indicator_num_width 8
+#define indicator_num_height 8
+static const unsigned char indicator_num_bits[] = {
+   0x66, 0xFF, 0x66, 0x66, 0xFF, 0x66, 0x00, 0x00
+};
