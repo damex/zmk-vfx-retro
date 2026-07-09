@@ -20,6 +20,7 @@ if(CONFIG_VFX_RETRO)
       -fanalyzer
   )
   zephyr_library_sources(src/battery.c)
+  zephyr_library_sources(src/glyphs.c)
   zephyr_library_sources(src/indicators.c)
   zephyr_library_sources(src/link.c)
   zephyr_library_sources(src/modifiers.c)
