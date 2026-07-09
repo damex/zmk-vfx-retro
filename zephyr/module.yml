@@ -1,0 +1,7 @@
+# Copyright 2026 Roman Kuzmitskii (@damex)
+# SPDX-License-Identifier: MIT
+
+name: zmk-vfx-retro
+build:
+  cmake: .
+  kconfig: Kconfig
